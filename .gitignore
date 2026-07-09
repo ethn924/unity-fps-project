@@ -1,0 +1,44 @@
+# Packages tiers (asset store) - non redistribuables, trop volumineux pour repo public
+Assets/ThirdParty/
+Assets/ThirdParty.meta
+
+# Unity generated
+Library/
+Temp/
+Obj/
+obj/
+Build/
+Builds/
+Logs/
+UserSettings/
+MemoryCaptures/
+
+# Visual Studio / Rider
+.vs/
+.vsconfig
+*.csproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Unity crash reports
+sysinfo.txt
+
+# Builds
+*.apk
+*.aab
+*.unitypackage
+*.app
