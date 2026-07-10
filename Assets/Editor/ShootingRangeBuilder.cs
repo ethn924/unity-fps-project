@@ -425,11 +425,12 @@ namespace FPS.EditorTools
         {
             var p = Group("Range_Props");
 
-            // Vitrines Infima Games à gauche de l'entrée (nord de la porte)
+            // Vitrines Infima Games en foyer d'entrée : plaquées contre le mur ouest,
+            // une de chaque côté de la porte, vitre face à la salle, hors du passage.
             bool ok = PlacePrefab(p, InfimaDemo + "P_Showcase_Bullets.prefab", "Showcase_Bullets",
-                                  new Vector3(6.4f, 0.06f, DoorZ + 2.2f), new Vector3(0, 90f, 0));
+                                  new Vector3(5.65f, 0.06f, DoorZ + 2.8f), new Vector3(0, -90f, 0));
             ok &= PlacePrefab(p, InfimaDemo + "P_Showcase_Weapon.prefab", "Showcase_Weapon",
-                              new Vector3(6.4f, 0.06f, DoorZ + 4.4f), new Vector3(0, 90f, 0));
+                              new Vector3(5.65f, 0.06f, DoorZ - 2.8f), new Vector3(0, -90f, 0));
 
             if (!ok)
             {
