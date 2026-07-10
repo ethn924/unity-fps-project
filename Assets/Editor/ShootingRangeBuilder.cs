@@ -359,10 +359,11 @@ namespace FPS.EditorTools
                     Spot(l, new Vector3(rowX[r], H - 0.15f, -2.5f - i * 4f), rowIntensity[r], 8.5f);
 
             // Spots inclinés dirigés VERS les cibles : les downlights n'éclairent pas les
-            // faces verticales (cibles, backstop) — ceux-ci oui.
-            float[] aimZ = { -4f, -7.5f, -11f, -14.5f };
+            // faces verticales (cibles, backstop) — ceux-ci oui. Rangée dense et proche
+            // pour que la ligne de cibles soit la zone la plus lumineuse du stand.
+            float[] aimZ = { -3.5f, -6f, -8.5f, -11f, -13.5f };
             for (int i = 0; i < aimZ.Length; i++)
-                Spot(l, new Vector3(14.6f, 3.3f, aimZ[i]), 3.2f, 8f, new Vector3(50f, 90f, 0f), 65f);
+                Spot(l, new Vector3(16f, 3.45f, aimZ[i]), 4f, 7f, new Vector3(55f, 90f, 0f), 68f);
 
             // Spot extérieur au-dessus de l'entrée
             Spot(l, new Vector3(XWest - T - 0.4f, 3.4f, DoorZ), 2f, 5f);
@@ -395,15 +396,15 @@ namespace FPS.EditorTools
                 float z = LaneZ0 - i * LaneStep;
                 Box("LaneSignRod_" + (i + 1), sg, new Vector3(9.78f, 3.42f, z), new Vector3(0.03f, 1.15f, 0.03f), m.Frame, collider: false);
                 Box("LaneSignBack_" + (i + 1), sg, new Vector3(9.78f, 2.62f, z), new Vector3(0.05f, 0.5f, 0.5f), m.SignBack, collider: false);
-                Box("LaneSignTrim_" + (i + 1), sg, new Vector3(9.77f, 2.4f, z), new Vector3(0.05f, 0.035f, 0.5f), m.Gold, collider: false);
-                Sign(sg, (i + 1).ToString(), new Vector3(9.73f, 2.64f, z), new Vector3(0, 90f, 0), 3.6f, Color.white, 1.2f, 0.5f);
+                Box("LaneSignTrim_" + (i + 1), sg, new Vector3(9.745f, 2.41f, z), new Vector3(0.015f, 0.035f, 0.5f), m.Gold, collider: false);
+                Sign(sg, (i + 1).ToString(), new Vector3(9.73f, 2.66f, z), new Vector3(0, 90f, 0), 3.4f, Color.white, 1.2f, 0.5f);
             }
 
             // Enseigne extérieure : caisson sombre + lisses dorées haut/bas, texte or espacé
             float sx = XWest - T - 0.06f;
             Box("MainSignBack", sg, new Vector3(sx, 3.3f, DoorZ), new Vector3(0.08f, 0.85f, 5.4f), m.SignBack, collider: false);
-            Box("MainSignTrim_Top", sg, new Vector3(sx - 0.005f, 3.75f, DoorZ), new Vector3(0.09f, 0.05f, 5.4f), m.Gold, collider: false);
-            Box("MainSignTrim_Bot", sg, new Vector3(sx - 0.005f, 2.85f, DoorZ), new Vector3(0.09f, 0.05f, 5.4f), m.Gold, collider: false);
+            Box("MainSignTrim_Top", sg, new Vector3(sx - 0.075f, 3.76f, DoorZ), new Vector3(0.02f, 0.05f, 5.4f), m.Gold, collider: false);
+            Box("MainSignTrim_Bot", sg, new Vector3(sx - 0.075f, 2.84f, DoorZ), new Vector3(0.02f, 0.05f, 5.4f), m.Gold, collider: false);
             Sign(sg, "S H O O T I N G   R A N G E", new Vector3(sx - 0.06f, 3.3f, DoorZ), new Vector3(0, 90f, 0), 2.6f,
                  new Color(0.95f, 0.78f, 0.35f), 5.2f, 0.8f);
 
@@ -413,8 +414,8 @@ namespace FPS.EditorTools
             Box("SafetyBannerRod_N", sg, new Vector3(11.3f, 3.65f, cz2 + 2.9f), new Vector3(0.03f, 0.66f, 0.03f), m.Frame, collider: false);
             Box("SafetyBannerRod_S", sg, new Vector3(11.3f, 3.65f, cz2 - 2.9f), new Vector3(0.03f, 0.66f, 0.03f), m.Frame, collider: false);
             Box("SafetyBannerBack", sg, new Vector3(11.3f, 3.05f, cz2), new Vector3(0.06f, 0.55f, 6.2f), m.SignWhite, collider: false);
-            Box("SafetyBannerTrim", sg, new Vector3(11.29f, 2.81f, cz2), new Vector3(0.06f, 0.05f, 6.2f), m.Red, collider: false);
-            Sign(sg, "DO NOT CROSS THE RED LINE", new Vector3(11.25f, 3.07f, cz2), new Vector3(0, 90f, 0), 1.3f,
+            Box("SafetyBannerTrim", sg, new Vector3(11.24f, 2.83f, cz2), new Vector3(0.015f, 0.05f, 6.2f), m.Red, collider: false);
+            Sign(sg, "DO NOT CROSS THE RED LINE", new Vector3(11.25f, 3.09f, cz2), new Vector3(0, 90f, 0), 1.3f,
                  new Color(0.75f, 0.15f, 0.12f), 6f, 0.5f);
 
             // Panneau protection obligatoire : plaque jaune, texte noir, au-dessus de la porte côté intérieur
@@ -424,7 +425,7 @@ namespace FPS.EditorTools
 
             // Règles du stand : plaque blanche au mur nord du lobby
             Box("RulesSignBack", sg, new Vector3(7f, 2.2f, ZNorth - 0.055f), new Vector3(1.7f, 1.15f, 0.05f), m.SignWhite, collider: false);
-            Box("RulesSignTrim", sg, new Vector3(7f, 2.82f, ZNorth - 0.06f), new Vector3(1.7f, 0.08f, 0.05f), m.Red, collider: false);
+            Box("RulesSignTrim", sg, new Vector3(7f, 2.83f, ZNorth - 0.095f), new Vector3(1.7f, 0.08f, 0.015f), m.Red, collider: false);
             Sign(sg, "RANGE RULES\n\nKEEP MUZZLE DOWNRANGE\nEYES AND EARS ON\nSTAY BEHIND THE RED LINE", new Vector3(7f, 2.18f, ZNorth - 0.09f),
                  Vector3.zero, 0.62f, new Color(0.12f, 0.12f, 0.14f), 1.6f, 1.05f);
 
