@@ -9,21 +9,26 @@ namespace FPS.EditorTools
 {
     /// Construit un stand de tir intérieur complet dans la scène ouverte.
     /// Menu : Tools > Shooting Range > Build (Rebuild). Idempotent : relancer reconstruit proprement.
-    /// Axe de tir = +X (les cibles existantes font face à l'ouest). 7 couloirs répartis le long de Z.
+    /// Axe de tir = +X (les cibles font face à l'ouest). 7 couloirs répartis le long de Z.
     public static class ShootingRangeBuilder
     {
         const string MatFolder = "Assets/Materials/Range";
         const string TexFolder = "Assets/ThirdParty/Textures";
+        const string InfimaDemo = "Assets/ThirdParty/Infima Games/Low Poly Shooter Pack - Free Sample/Prefabs/Demo/";
 
         // Dimensions intérieures (unités monde)
-        const float XWest = 5f, XEast = 19f;
-        const float ZSouth = -14.6f, ZNorth = 0.4f;
-        const float H = 3.6f;   // hauteur sous plafond
-        const float T = 0.3f;   // épaisseur murs
+        const float XWest = 5f, XEast = 21f;
+        const float ZSouth = -16.5f, ZNorth = 0.5f;
+        const float H = 4f;      // hauteur sous plafond
+        const float T = 0.3f;    // épaisseur murs
         const int Lanes = 7;
-        const float LaneZ0 = -2.65f;   // centre du couloir 1
-        const float LaneStep = 1.7f;   // écart entre couloirs
+        const float LaneZ0 = -3f;      // centre du couloir 1
+        const float LaneStep = 2f;     // largeur d'un couloir
         const float FiringX = 9.75f;   // centre des séparateurs de box
+        const float TargetX = 17.5f;   // position x des cibles
+        const float DoorZ = -8f, DoorW = 1.8f, DoorH = 2.4f;
+        // Décalage anti z-fighting entre panneaux muraux et murs
+        const float Standoff = 0.015f;
 
         static Transform root;
         static int groundLayer;
@@ -142,8 +147,7 @@ namespace FPS.EditorTools
                 mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
             }
 
-            // Upgrade optionnel : si des textures téléchargées existent sous Assets/ThirdParty/Textures,
-            // elles sont branchées automatiquement (match par mot-clé dans le chemin).
+            // Upgrade optionnel : textures sous Assets/ThirdParty/Textures branchées par mot-clé.
             if (!string.IsNullOrEmpty(texKeyword))
             {
                 var tex = FindTexture(texKeyword, normal: false);
@@ -237,8 +241,7 @@ namespace FPS.EditorTools
             float lenX = XEast - XWest + 2 * T;
             float lenZ = ZNorth - ZSouth + 2 * T;
 
-            // Sol : dalle fine (0.06) → le joueur enjambe sans souci (step offset).
-            // Même layer que Ground pour que le groundCheck de PlayerMovement fonctionne dedans.
+            // Sol : dalle fine (0.06) — même layer que Ground pour le groundCheck du joueur
             var floor = Box("Floor", s, new Vector3(cx, 0.03f, cz), new Vector3(lenX, 0.06f, lenZ), m.Floor);
             floor.layer = groundLayer;
 
@@ -248,30 +251,29 @@ namespace FPS.EditorTools
             Box("Wall_South", s, new Vector3(cx, H / 2f, ZSouth - T / 2f), new Vector3(lenX, H, T), m.Wall);
             Box("Wall_East",  s, new Vector3(XEast + T / 2f, H / 2f, cz),  new Vector3(T, H, lenZ), m.Wall);
 
-            // Mur ouest avec porte (entrée derrière la ligne de tir, comme un vrai stand)
-            float doorZ = -7f, doorW = 1.8f, doorH = 2.4f;
+            // Mur ouest avec porte (entrée derrière la ligne de tir)
             float wx = XWest - T / 2f;
-            float nLen = (ZNorth + T) - (doorZ + doorW / 2f);
-            float sLen = (doorZ - doorW / 2f) - (ZSouth - T);
-            Box("Wall_West_N", s, new Vector3(wx, H / 2f, doorZ + doorW / 2f + nLen / 2f), new Vector3(T, H, nLen), m.Wall);
-            Box("Wall_West_S", s, new Vector3(wx, H / 2f, doorZ - doorW / 2f - sLen / 2f), new Vector3(T, H, sLen), m.Wall);
-            Box("Wall_West_Header", s, new Vector3(wx, doorH + (H - doorH) / 2f, doorZ), new Vector3(T, H - doorH, doorW), m.Wall);
+            float nLen = (ZNorth + T) - (DoorZ + DoorW / 2f);
+            float sLen = (DoorZ - DoorW / 2f) - (ZSouth - T);
+            Box("Wall_West_N", s, new Vector3(wx, H / 2f, DoorZ + DoorW / 2f + nLen / 2f), new Vector3(T, H, nLen), m.Wall);
+            Box("Wall_West_S", s, new Vector3(wx, H / 2f, DoorZ - DoorW / 2f - sLen / 2f), new Vector3(T, H, sLen), m.Wall);
+            Box("Wall_West_Header", s, new Vector3(wx, DoorH + (H - DoorH) / 2f, DoorZ), new Vector3(T, H - DoorH, DoorW), m.Wall);
 
-            // Encadrement de porte sombre
-            Box("DoorJamb_N", s, new Vector3(wx, doorH / 2f, doorZ + doorW / 2f + 0.05f), new Vector3(T + 0.06f, doorH, 0.1f), m.Frame);
-            Box("DoorJamb_S", s, new Vector3(wx, doorH / 2f, doorZ - doorW / 2f - 0.05f), new Vector3(T + 0.06f, doorH, 0.1f), m.Frame);
-            Box("DoorLintel", s, new Vector3(wx, doorH + 0.05f, doorZ), new Vector3(T + 0.06f, 0.1f, doorW + 0.2f), m.Frame);
+            // Encadrement de porte sombre (légèrement en saillie, jamais coplanaire)
+            Box("DoorJamb_N", s, new Vector3(wx, DoorH / 2f, DoorZ + DoorW / 2f + 0.05f), new Vector3(T + 0.08f, DoorH, 0.1f), m.Frame);
+            Box("DoorJamb_S", s, new Vector3(wx, DoorH / 2f, DoorZ - DoorW / 2f - 0.05f), new Vector3(T + 0.08f, DoorH, 0.1f), m.Frame);
+            Box("DoorLintel", s, new Vector3(wx, DoorH + 0.05f, DoorZ), new Vector3(T + 0.08f, 0.1f, DoorW + 0.2f), m.Frame);
 
-            // Bande sombre derrière la zone tireurs
-            Box("Wainscot_N", s, new Vector3(8f, 0.5f, ZNorth - 0.03f), new Vector3(6f, 1f, 0.06f), m.Acoustic);
-            Box("Wainscot_S", s, new Vector3(8f, 0.5f, ZSouth + 0.03f), new Vector3(6f, 1f, 0.06f), m.Acoustic);
+            // Bande sombre derrière la zone tireurs — décollée du mur (anti z-fighting)
+            Box("Wainscot_N", s, new Vector3(8.2f, 0.5f, ZNorth - 0.03f - Standoff), new Vector3(5.9f, 1f, 0.06f), m.Acoustic);
+            Box("Wainscot_S", s, new Vector3(8.2f, 0.5f, ZSouth + 0.03f + Standoff), new Vector3(5.9f, 1f, 0.06f), m.Acoustic);
 
-            // Panneaux acoustiques côté cibles
+            // Panneaux acoustiques côté cibles — décollés du mur
             for (int i = 0; i < 5; i++)
             {
-                float px = 11.4f + i * 1.5f;
-                Box("Acoustic_N_" + i, s, new Vector3(px, 1.9f, ZNorth - 0.04f), new Vector3(1.2f, 2f, 0.08f), m.Acoustic);
-                Box("Acoustic_S_" + i, s, new Vector3(px, 1.9f, ZSouth + 0.04f), new Vector3(1.2f, 2f, 0.08f), m.Acoustic);
+                float px = 12.5f + i * 1.7f;
+                Box("Acoustic_N_" + i, s, new Vector3(px, 2.1f, ZNorth - 0.04f - Standoff), new Vector3(1.4f, 2.4f, 0.08f), m.Acoustic);
+                Box("Acoustic_S_" + i, s, new Vector3(px, 2.1f, ZSouth + 0.04f + Standoff), new Vector3(1.4f, 2.4f, 0.08f), m.Acoustic);
             }
         }
 
@@ -283,15 +285,15 @@ namespace FPS.EditorTools
             for (int i = 0; i <= Lanes; i++)
             {
                 float z = LaneZ0 + LaneStep / 2f - i * LaneStep;
-                Box("Divider_" + i, b, new Vector3(FiringX, 1.11f, z), new Vector3(1.7f, 2.1f, 0.08f), m.Frame);
+                Box("Divider_" + i, b, new Vector3(FiringX, 1.16f, z), new Vector3(1.7f, 2.2f, 0.08f), m.Frame);
             }
 
             // Table + panneau avant par couloir
             for (int i = 0; i < Lanes; i++)
             {
                 float z = LaneZ0 - i * LaneStep;
-                Box("Table_" + (i + 1), b, new Vector3(10.05f, 1.03f, z), new Vector3(0.8f, 0.06f, 1.5f), m.Table);
-                Box("TableFront_" + (i + 1), b, new Vector3(10.42f, 0.53f, z), new Vector3(0.06f, 1.06f, 1.5f), m.Table);
+                Box("Table_" + (i + 1), b, new Vector3(10.05f, 1.03f, z), new Vector3(0.8f, 0.06f, 1.7f), m.Table);
+                Box("TableFront_" + (i + 1), b, new Vector3(10.42f, 0.53f, z), new Vector3(0.06f, 1.06f, 1.7f), m.Table);
             }
 
             float cz = (ZSouth + ZNorth) / 2f;
@@ -305,18 +307,18 @@ namespace FPS.EditorTools
             float cz = (ZSouth + ZNorth) / 2f;
 
             // Tapis caoutchouc au sol côté cibles
-            Box("RubberFloor", d, new Vector3(15.2f, 0.066f, cz), new Vector3(7.4f, 0.012f, ZNorth - ZSouth - 0.1f), m.Rubber, shadows: false);
+            Box("RubberFloor", d, new Vector3(16.95f, 0.066f, cz), new Vector3(7.9f, 0.012f, ZNorth - ZSouth - 0.1f), m.Rubber, shadows: false);
 
             // Pare-balles incliné (le haut penche vers l'arrière)
-            Box("Backstop", d, new Vector3(18.2f, 1.8f, cz), new Vector3(0.14f, 3.5f, ZNorth - ZSouth - 0.15f), m.Backstop,
+            Box("Backstop", d, new Vector3(20.3f, 2f, cz), new Vector3(0.14f, 3.9f, ZNorth - ZSouth - 0.15f), m.Backstop,
                 euler: new Vector3(0, 0, 14f));
 
             // Support + socle sous chaque cible
             for (int i = 0; i < Lanes; i++)
             {
                 float z = LaneZ0 - i * LaneStep;
-                Box("TargetStand_" + (i + 1), d, new Vector3(15.6f, 0.53f, z), new Vector3(0.12f, 0.94f, 0.12f), m.Frame);
-                Box("TargetBase_" + (i + 1), d, new Vector3(15.6f, 0.09f, z), new Vector3(0.5f, 0.06f, 0.5f), m.Frame);
+                Box("TargetStand_" + (i + 1), d, new Vector3(TargetX, 0.53f, z), new Vector3(0.12f, 0.94f, 0.12f), m.Frame);
+                Box("TargetBase_" + (i + 1), d, new Vector3(TargetX, 0.09f, z), new Vector3(0.5f, 0.06f, 0.5f), m.Frame);
             }
         }
 
@@ -324,28 +326,32 @@ namespace FPS.EditorTools
         {
             var l = Group("Range_Lighting");
             float cz = (ZSouth + ZNorth) / 2f;
-            float stripLen = ZNorth - ZSouth - 1f;
+            float stripLen = ZNorth - ZSouth - 1.6f;
 
             // Réglettes lumineuses émissives au plafond
-            float[] stripX = { 7.2f, 9.7f, 12.2f, 14.7f, 17f };
+            float[] stripX = { 7f, 9.5f, 12f, 14.5f, 17f, 19.5f };
             for (int i = 0; i < stripX.Length; i++)
                 Box("LightStrip_" + i, l, new Vector3(stripX[i], H - 0.05f, cz), new Vector3(0.14f, 0.05f, stripLen), m.Emissive,
                     shadows: false);
 
-            // Baffles plafond inclinés côté cibles (anti-ricochet, comme les vrais stands)
-            float[] bafX = { 11.2f, 13f, 14.8f, 16.6f };
+            // Baffles plafond inclinés côté cibles (anti-ricochet)
+            float[] bafX = { 12.5f, 14.5f, 16.5f, 18.5f };
             for (int i = 0; i < bafX.Length; i++)
-                Box("Baffle_" + i, l, new Vector3(bafX[i], 3.1f, cz), new Vector3(0.08f, 0.85f, stripLen), m.Ceiling,
+                Box("Baffle_" + i, l, new Vector3(bafX[i], 3.5f, cz), new Vector3(0.08f, 0.9f, stripLen), m.Ceiling,
                     euler: new Vector3(0, 0, -28f));
 
-            // Vrais éclairages (3 rangées x 4)
-            float[] rowX = { 7.5f, 11f, 15.5f };
+            // Vrais éclairages — rangées côté cibles plus intenses (zone visée par le joueur)
+            float[] rowX = { 7.5f, 11f, 15f, 18.5f };
+            float[] rowIntensity = { 2.6f, 2.6f, 3.3f, 3.3f };
             for (int r = 0; r < rowX.Length; r++)
                 for (int i = 0; i < 4; i++)
-                    Spot(l, new Vector3(rowX[r], H - 0.15f, -2.5f - i * 3.2f));
+                    Spot(l, new Vector3(rowX[r], H - 0.15f, -2.5f - i * 4f), rowIntensity[r], 8.5f);
+
+            // Spot extérieur au-dessus de l'entrée
+            Spot(l, new Vector3(XWest - T - 0.4f, 3.4f, DoorZ), 2f, 5f);
         }
 
-        static void Spot(Transform parent, Vector3 pos)
+        static void Spot(Transform parent, Vector3 pos, float intensity, float range)
         {
             var go = new GameObject("Spot_" + pos.x + "_" + pos.z);
             Undo.RegisterCreatedObjectUndo(go, "Range");
@@ -355,8 +361,8 @@ namespace FPS.EditorTools
             var li = go.AddComponent<Light>();
             li.type = LightType.Spot;
             li.spotAngle = 95f;
-            li.range = 7f;
-            li.intensity = 2.6f;
+            li.range = range;
+            li.intensity = intensity;
             li.color = new Color(1f, 0.96f, 0.88f);
             li.shadows = LightShadows.None;
         }
@@ -365,21 +371,22 @@ namespace FPS.EditorTools
         {
             var sg = Group("Range_Signage");
 
-            // Numéro au-dessus de chaque box (lisible depuis l'ouest, côté tireur)
+            // Numéro suspendu au plafond au-dessus de chaque box (lisible côté tireur)
             for (int i = 0; i < Lanes; i++)
             {
                 float z = LaneZ0 - i * LaneStep;
-                Box("LaneSignBack_" + (i + 1), sg, new Vector3(9.78f, 2.5f, z), new Vector3(0.05f, 0.42f, 0.42f), m.SignBack, collider: false);
-                Sign(sg, (i + 1).ToString(), new Vector3(9.73f, 2.5f, z), new Vector3(0, 90f, 0), 4f, Color.white, 1.2f, 0.5f);
+                Box("LaneSignRod_" + (i + 1), sg, new Vector3(9.78f, 3.42f, z), new Vector3(0.03f, 1.15f, 0.03f), m.Frame, collider: false);
+                Box("LaneSignBack_" + (i + 1), sg, new Vector3(9.78f, 2.62f, z), new Vector3(0.05f, 0.45f, 0.45f), m.SignBack, collider: false);
+                Sign(sg, (i + 1).ToString(), new Vector3(9.73f, 2.62f, z), new Vector3(0, 90f, 0), 4f, Color.white, 1.2f, 0.5f);
             }
 
             // Enseigne extérieure au-dessus de la porte
-            Box("MainSignBack", sg, new Vector3(XWest - T - 0.05f, 3.05f, -7f), new Vector3(0.08f, 0.7f, 4.6f), m.SignBack, collider: false);
-            Sign(sg, "STAND DE TIR", new Vector3(XWest - T - 0.11f, 3.05f, -7f), new Vector3(0, 90f, 0), 3f, new Color(1f, 0.85f, 0.3f), 4.4f, 0.7f);
+            Box("MainSignBack", sg, new Vector3(XWest - T - 0.06f, 3.3f, DoorZ), new Vector3(0.08f, 0.8f, 5.2f), m.SignBack, collider: false);
+            Sign(sg, "SHOOTING RANGE", new Vector3(XWest - T - 0.12f, 3.3f, DoorZ), new Vector3(0, 90f, 0), 3.5f, new Color(1f, 0.85f, 0.3f), 5f, 0.8f);
 
             // Consigne de sécurité sur le mur nord, lisible depuis l'intérieur
-            Sign(sg, "NE PAS FRANCHIR LA LIGNE ROUGE", new Vector3(8f, 2.2f, ZNorth - 0.08f), Vector3.zero, 1.6f,
-                 new Color(0.9f, 0.25f, 0.2f), 5.5f, 0.5f);
+            Sign(sg, "DO NOT CROSS THE RED LINE", new Vector3(8.5f, 2.4f, ZNorth - 0.1f), Vector3.zero, 1.5f,
+                 new Color(0.9f, 0.25f, 0.2f), 7f, 0.5f);
         }
 
         // NB : si un texte apparaît en miroir, ajouter 180 au Y de sa rotation.
@@ -402,10 +409,32 @@ namespace FPS.EditorTools
         static void BuildProps(RangeMats m)
         {
             var p = Group("Range_Props");
-            Box("BackBench", p, new Vector3(5.75f, 0.45f, -2.8f), new Vector3(0.7f, 0.9f, 2.6f), m.Table);
-            Box("Crate_A", p, new Vector3(5.7f, 1.08f, -2.2f), new Vector3(0.36f, 0.36f, 0.36f), m.Backstop);
-            Box("Crate_B", p, new Vector3(5.75f, 1.05f, -3.1f), new Vector3(0.3f, 0.3f, 0.45f), m.Frame);
-            Box("Crate_C", p, new Vector3(5.7f, 1.02f, -3.6f), new Vector3(0.26f, 0.26f, 0.26f), m.Red);
+
+            // Vitrines Infima Games à gauche de l'entrée (nord de la porte)
+            bool ok = PlacePrefab(p, InfimaDemo + "P_Showcase_Bullets.prefab", "Showcase_Bullets",
+                                  new Vector3(6.4f, 0.06f, DoorZ + 2.2f), new Vector3(0, 90f, 0));
+            ok &= PlacePrefab(p, InfimaDemo + "P_Showcase_Weapon.prefab", "Showcase_Weapon",
+                              new Vector3(6.4f, 0.06f, DoorZ + 4.4f), new Vector3(0, 90f, 0));
+
+            if (!ok)
+            {
+                // Fallback si les prefabs Infima manquent : banc simple
+                Box("BackBench", p, new Vector3(5.85f, 0.45f, DoorZ + 3f), new Vector3(0.7f, 0.9f, 2.6f), m.Table);
+                Debug.LogWarning("Prefabs Infima introuvables — banc de repli placé à la place des vitrines.");
+            }
+        }
+
+        static bool PlacePrefab(Transform parent, string assetPath, string name, Vector3 pos, Vector3 euler)
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+            if (prefab == null) return false;
+            var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            Undo.RegisterCreatedObjectUndo(go, "Range");
+            go.name = name;
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = pos;
+            go.transform.localEulerAngles = euler;
+            return true;
         }
 
         static void PlaceTargets()
@@ -422,7 +451,7 @@ namespace FPS.EditorTools
             {
                 Undo.RecordObject(targets[i], "Move target");
                 float z = LaneZ0 - i * LaneStep;
-                targets[i].position = new Vector3(15.6f, 1.5f, z);
+                targets[i].position = new Vector3(TargetX, 1.5f, z);
             }
         }
 
@@ -432,7 +461,7 @@ namespace FPS.EditorTools
             if (cyl != null)
             {
                 var pos = cyl.transform.position;
-                if (pos.x > 4f && pos.x < 20f && pos.z > -15.5f && pos.z < 1.5f)
+                if (pos.x > 4f && pos.x < 22f && pos.z > -17.5f && pos.z < 1.5f)
                     Debug.LogWarning("L'objet 'Cylinder' se trouve dans l'emprise du stand de tir — le déplacer ou le supprimer à la main.");
             }
         }
