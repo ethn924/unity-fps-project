@@ -53,11 +53,11 @@ namespace FPS.EditorTools
             var m = BuildMaterials();
             BuildStructure(m);
             BuildBooths(m);
+            PlaceTargets();          // avant BuildDownrange : les supports s'adaptent à la taille de chaque cible
             BuildDownrange(m);
             BuildLighting(m);
             BuildSignage(m);
             BuildProps(m);
-            PlaceTargets();
             WarnIfBlocked();
 
             Undo.CollapseUndoOperations(Undo.GetCurrentGroup());
@@ -106,7 +106,7 @@ namespace FPS.EditorTools
                 Table    = EnsureMat("RangeTable",    new Color(0.35f, 0.37f, 0.41f), 0.35f, 0.3f),
                 Acoustic = EnsureMat("RangeAcoustic", new Color(0.28f, 0.30f, 0.34f), 0.05f, 0f,   texKeyword: "acoustic", tiling: 2f),
                 Rubber   = EnsureMat("RangeRubber",   new Color(0.22f, 0.23f, 0.24f), 0.10f, 0f,   texKeyword: "rubber",   tiling: 3f),
-                Backstop = EnsureMat("RangeBackstop", new Color(0.18f, 0.29f, 0.24f), 0.15f, 0f),
+                Backstop = EnsureMat("RangeBackstop", new Color(0.26f, 0.38f, 0.31f), 0.15f, 0f),
                 Red      = EnsureMat("RangeRed",      new Color(0.76f, 0.20f, 0.18f), 0.30f, 0f),
                 Yellow   = EnsureMat("RangeYellow",   new Color(0.91f, 0.73f, 0.24f), 0.30f, 0f),
                 Emissive = EnsureMat("RangeEmissive", Color.white, 0.5f, 0f, emission: Color.white * 2.2f),
@@ -259,10 +259,13 @@ namespace FPS.EditorTools
             Box("Wall_West_S", s, new Vector3(wx, H / 2f, DoorZ - DoorW / 2f - sLen / 2f), new Vector3(T, H, sLen), m.Wall);
             Box("Wall_West_Header", s, new Vector3(wx, DoorH + (H - DoorH) / 2f, DoorZ), new Vector3(T, H - DoorH, DoorW), m.Wall);
 
-            // Encadrement de porte sombre (légèrement en saillie, jamais coplanaire)
-            Box("DoorJamb_N", s, new Vector3(wx, DoorH / 2f, DoorZ + DoorW / 2f + 0.05f), new Vector3(T + 0.08f, DoorH, 0.1f), m.Frame);
-            Box("DoorJamb_S", s, new Vector3(wx, DoorH / 2f, DoorZ - DoorW / 2f - 0.05f), new Vector3(T + 0.08f, DoorH, 0.1f), m.Frame);
-            Box("DoorLintel", s, new Vector3(wx, DoorH + 0.05f, DoorZ), new Vector3(T + 0.08f, 0.1f, DoorW + 0.2f), m.Frame);
+            // Encadrement de porte EN RETRAIT dans l'ouverture : aucun chevauchement
+            // avec le mur (cause du z-fighting précédent), débord libre des deux côtés.
+            float jN = DoorZ + DoorW / 2f - 0.05f;   // jambage nord, entièrement dans l'ouverture
+            float jS = DoorZ - DoorW / 2f + 0.05f;
+            Box("DoorJamb_N", s, new Vector3(wx, DoorH / 2f, jN - 0.01f), new Vector3(T + 0.16f, DoorH, 0.08f), m.Frame);
+            Box("DoorJamb_S", s, new Vector3(wx, DoorH / 2f, jS + 0.01f), new Vector3(T + 0.16f, DoorH, 0.08f), m.Frame);
+            Box("DoorLintel", s, new Vector3(wx, DoorH - 0.05f, DoorZ), new Vector3(T + 0.16f, 0.08f, DoorW - 0.3f), m.Frame);
 
             // Bande sombre derrière la zone tireurs — décollée du mur (anti z-fighting)
             Box("Wainscot_N", s, new Vector3(8.2f, 0.5f, ZNorth - 0.03f - Standoff), new Vector3(5.9f, 1f, 0.06f), m.Acoustic);
@@ -313,11 +316,16 @@ namespace FPS.EditorTools
             Box("Backstop", d, new Vector3(20.3f, 2f, cz), new Vector3(0.14f, 3.9f, ZNorth - ZSouth - 0.15f), m.Backstop,
                 euler: new Vector3(0, 0, 14f));
 
-            // Support + socle sous chaque cible
+            // Support + socle sous chaque cible — hauteur adaptée à la taille de la cible
+            // (les cibles ont des scales différentes : le poteau monte jusqu'au bas de chacune)
+            var targets = SortedTargets();
             for (int i = 0; i < Lanes; i++)
             {
                 float z = LaneZ0 - i * LaneStep;
-                Box("TargetStand_" + (i + 1), d, new Vector3(TargetX, 0.53f, z), new Vector3(0.12f, 0.94f, 0.12f), m.Frame);
+                float halfH = i < targets.Count ? targets[i].localScale.y * 0.5f : 0.5f;
+                float standTop = 1.5f - halfH + 0.02f; // léger recouvrement pour éviter tout jour
+                float standH = standTop - 0.06f;
+                Box("TargetStand_" + (i + 1), d, new Vector3(TargetX, 0.06f + standH / 2f, z), new Vector3(0.12f, standH, 0.12f), m.Frame);
                 Box("TargetBase_" + (i + 1), d, new Vector3(TargetX, 0.09f, z), new Vector3(0.5f, 0.06f, 0.5f), m.Frame);
             }
         }
@@ -347,20 +355,27 @@ namespace FPS.EditorTools
                 for (int i = 0; i < 4; i++)
                     Spot(l, new Vector3(rowX[r], H - 0.15f, -2.5f - i * 4f), rowIntensity[r], 8.5f);
 
+            // Spots inclinés dirigés VERS les cibles : les downlights n'éclairent pas les
+            // faces verticales (cibles, backstop) — ceux-ci oui.
+            float[] aimZ = { -4f, -7.5f, -11f, -14.5f };
+            for (int i = 0; i < aimZ.Length; i++)
+                Spot(l, new Vector3(14.6f, 3.3f, aimZ[i]), 3.2f, 8f, new Vector3(50f, 90f, 0f), 65f);
+
             // Spot extérieur au-dessus de l'entrée
             Spot(l, new Vector3(XWest - T - 0.4f, 3.4f, DoorZ), 2f, 5f);
         }
 
-        static void Spot(Transform parent, Vector3 pos, float intensity, float range)
+        static void Spot(Transform parent, Vector3 pos, float intensity, float range,
+                         Vector3? euler = null, float angle = 95f)
         {
             var go = new GameObject("Spot_" + pos.x + "_" + pos.z);
             Undo.RegisterCreatedObjectUndo(go, "Range");
             go.transform.SetParent(parent, false);
             go.transform.localPosition = pos;
-            go.transform.localEulerAngles = new Vector3(90f, 0f, 0f);
+            go.transform.localEulerAngles = euler ?? new Vector3(90f, 0f, 0f);
             var li = go.AddComponent<Light>();
             li.type = LightType.Spot;
-            li.spotAngle = 95f;
+            li.spotAngle = angle;
             li.range = range;
             li.intensity = intensity;
             li.color = new Color(1f, 0.96f, 0.88f);
@@ -432,21 +447,34 @@ namespace FPS.EditorTools
             Undo.RegisterCreatedObjectUndo(go, "Range");
             go.name = name;
             go.transform.SetParent(parent, false);
-            go.transform.localPosition = pos;
             go.transform.localEulerAngles = euler;
+            go.transform.localPosition = pos;
+
+            // Pose le BAS du prefab sur pos.y quel que soit son pivot (certains prefabs
+            // Infima ont le pivot au centre : sans ça ils s'enfoncent dans le sol).
+            var rends = go.GetComponentsInChildren<Renderer>();
+            if (rends.Length > 0)
+            {
+                var b = rends[0].bounds;
+                foreach (var r in rends) b.Encapsulate(r.bounds);
+                go.transform.position += new Vector3(0, pos.y - b.min.y, 0);
+            }
             return true;
         }
 
-        static void PlaceTargets()
+        static List<Transform> SortedTargets()
         {
             var targets = new List<Transform>();
             foreach (Transform c in root)
                 if (c.name.StartsWith("Target"))
                     targets.Add(c);
-
             // Conserve l'ordre gauche->droite existant
-            targets = targets.OrderByDescending(t => t.position.z).ToList();
+            return targets.OrderByDescending(t => t.position.z).ToList();
+        }
 
+        static void PlaceTargets()
+        {
+            var targets = SortedTargets();
             for (int i = 0; i < targets.Count && i < Lanes; i++)
             {
                 Undo.RecordObject(targets[i], "Move target");
