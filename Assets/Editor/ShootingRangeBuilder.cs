@@ -407,11 +407,15 @@ namespace FPS.EditorTools
             Sign(sg, "S H O O T I N G   R A N G E", new Vector3(sx - 0.06f, 3.3f, DoorZ), new Vector3(0, 90f, 0), 2.6f,
                  new Color(0.95f, 0.78f, 0.35f), 5.2f, 0.8f);
 
-            // Consigne de sécurité : plaque blanche cadrée rouge, mur nord
-            Box("SafetySignBack", sg, new Vector3(8.5f, 2.4f, ZNorth - 0.055f), new Vector3(5.6f, 0.6f, 0.05f), m.SignWhite, collider: false);
-            Box("SafetySignTrim", sg, new Vector3(8.5f, 2.13f, ZNorth - 0.06f), new Vector3(5.6f, 0.05f, 0.05f), m.Red, collider: false);
-            Sign(sg, "DO NOT CROSS THE RED LINE", new Vector3(8.5f, 2.4f, ZNorth - 0.09f), Vector3.zero, 1.3f,
-                 new Color(0.75f, 0.15f, 0.12f), 5.4f, 0.5f);
+            // Consigne de sécurité : bannière suspendue au plafond, au-dessus de la ligne rouge,
+            // lisible en entrant (les murs nord/sud sont déjà occupés — zéro chevauchement ici)
+            float cz2 = (ZSouth + ZNorth) / 2f;
+            Box("SafetyBannerRod_N", sg, new Vector3(11.3f, 3.65f, cz2 + 2.9f), new Vector3(0.03f, 0.66f, 0.03f), m.Frame, collider: false);
+            Box("SafetyBannerRod_S", sg, new Vector3(11.3f, 3.65f, cz2 - 2.9f), new Vector3(0.03f, 0.66f, 0.03f), m.Frame, collider: false);
+            Box("SafetyBannerBack", sg, new Vector3(11.3f, 3.05f, cz2), new Vector3(0.06f, 0.55f, 6.2f), m.SignWhite, collider: false);
+            Box("SafetyBannerTrim", sg, new Vector3(11.29f, 2.81f, cz2), new Vector3(0.06f, 0.05f, 6.2f), m.Red, collider: false);
+            Sign(sg, "DO NOT CROSS THE RED LINE", new Vector3(11.25f, 3.07f, cz2), new Vector3(0, 90f, 0), 1.3f,
+                 new Color(0.75f, 0.15f, 0.12f), 6f, 0.5f);
 
             // Panneau protection obligatoire : plaque jaune, texte noir, au-dessus de la porte côté intérieur
             Box("PpeSignBack", sg, new Vector3(XWest + 0.04f, 2.85f, DoorZ), new Vector3(0.05f, 0.55f, 2.6f), m.Yellow, collider: false);
@@ -424,9 +428,10 @@ namespace FPS.EditorTools
             Sign(sg, "RANGE RULES\n\nKEEP MUZZLE DOWNRANGE\nEYES AND EARS ON\nSTAY BEHIND THE RED LINE", new Vector3(7f, 2.18f, ZNorth - 0.09f),
                  Vector3.zero, 0.62f, new Color(0.12f, 0.12f, 0.14f), 1.6f, 1.05f);
 
-            // Marquages de distance peints au sol downrange
-            Sign(sg, "3 M", new Vector3(13.9f, 0.078f, -8f), new Vector3(90f, 90f, 0), 2.2f, new Color(0.9f, 0.9f, 0.9f, 0.85f), 3f, 0.8f);
-            Sign(sg, "5 M", new Vector3(15.9f, 0.078f, -8f), new Vector3(90f, 90f, 0), 2.2f, new Color(0.9f, 0.9f, 0.9f, 0.85f), 3f, 0.8f);
+            // Marquages de distance peints au sol downrange (au centre d'un couloir,
+            // pas sur une ligne de séparation)
+            Sign(sg, "3 M", new Vector3(13.9f, 0.082f, -9f), new Vector3(90f, 90f, 0), 2.2f, new Color(0.9f, 0.9f, 0.9f, 0.85f), 3f, 0.8f);
+            Sign(sg, "5 M", new Vector3(15.9f, 0.082f, -9f), new Vector3(90f, 90f, 0), 2.2f, new Color(0.9f, 0.9f, 0.9f, 0.85f), 3f, 0.8f);
         }
 
         // NB : si un texte apparaît en miroir, ajouter 180 au Y de sa rotation.
@@ -539,11 +544,11 @@ namespace FPS.EditorTools
             Undo.RegisterCreatedObjectUndo(ext, "Range");
             ext.name = "FireExtinguisher";
             ext.transform.SetParent(dt, false);
-            ext.transform.localPosition = new Vector3(5.3f, 1.05f, DoorZ - 1.6f);
+            ext.transform.localPosition = new Vector3(5.17f, 1.05f, DoorZ - 1.6f);
             ext.transform.localScale = new Vector3(0.16f, 0.24f, 0.16f);
             ext.GetComponent<MeshRenderer>().sharedMaterial = m.Red;
             ext.tag = "Wall";
-            Box("ExtinguisherMount", dt, new Vector3(5.22f, 1.05f, DoorZ - 1.6f), new Vector3(0.06f, 0.3f, 0.3f), m.Frame, collider: false);
+            Box("ExtinguisherMount", dt, new Vector3(5.05f, 1.05f, DoorZ - 1.6f), new Vector3(0.06f, 0.3f, 0.3f), m.Frame, collider: false);
 
             // Comptoir d'accueil contre le mur nord du lobby
             Box("CounterTop", dt, new Vector3(7f, 1.06f, -0.1f), new Vector3(2.2f, 0.07f, 0.75f), m.Table);
@@ -624,7 +629,43 @@ namespace FPS.EditorTools
                     }
                 }
 
-            // 5. Textures branchées ?
+            // 5. Chevauchements entre éléments de signalétique/habillage mural
+            // (plaques, panneaux acoustiques, pilastres, appliques) — AABB rétrécies de 1 cm
+            var keywords = new[] { "Sign", "Acoustic", "Pilaster", "WallLight", "Wainscot" };
+            var decor = new List<Renderer>();
+            foreach (Transform c in root)
+            {
+                if (!c.name.StartsWith("Range_")) continue;
+                foreach (var r in c.GetComponentsInChildren<Renderer>())
+                    if (keywords.Any(k => r.transform.name.Contains(k)) && !(r is MeshRenderer mr && mr.GetComponent<TextMeshPro>() != null))
+                        decor.Add(r);
+            }
+            string Key(string n)
+            {
+                foreach (var suf in new[] { "Back", "Trim", "Rod" })
+                {
+                    int idx = n.IndexOf(suf);
+                    if (idx > 0) return n.Substring(0, idx);
+                }
+                int us = n.IndexOf('_');
+                return us > 0 ? n.Substring(0, us) : n;
+            }
+            for (int a = 0; a < decor.Count; a++)
+                for (int b = a + 1; b < decor.Count; b++)
+                {
+                    // Ignore les paires du même panneau (back/trim/rod du même ensemble)
+                    string na = decor[a].transform.name, nb = decor[b].transform.name;
+                    if (Key(na) == Key(nb)) continue;
+                    var ba = decor[a].bounds; ba.Expand(-0.02f);
+                    var bb = decor[b].bounds; bb.Expand(-0.02f);
+                    if (ba.Intersects(bb))
+                    {
+                        Debug.LogWarning($"[Validate] Chevauchement : {na} <-> {nb}", decor[a].gameObject);
+                        issues++;
+                    }
+                }
+
+            // 6. Textures branchées ?
             var wallMat = AssetDatabase.LoadAssetAtPath<Material>(MatFolder + "/RangeWall.mat");
             if (wallMat != null && wallMat.GetTexture("_BaseMap") == null)
                 Debug.Log("[Validate] Info : RangeWall sans texture (dossier Textures absent ?) — couleurs unies utilisées.");
