@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "automoto-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "D:\\Travail\\Automoto+", "run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "automoto-static",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "D:\\Travail\\Automoto+\\out", "-l", "4173"],
+      "port": 4173
+    },
+    {
+      "name": "portfolio",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8090", "--directory", "D:\\Travail\\Portfolio_Ethan"],
+      "port": 8090
+    }
+  ]
+}
