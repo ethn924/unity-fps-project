@@ -58,6 +58,7 @@ namespace FPS.EditorTools
             BuildLighting(m);
             BuildSignage(m);
             BuildProps(m);
+            BuildDetails(m);
             WarnIfBlocked();
 
             Undo.CollapseUndoOperations(Undo.GetCurrentGroup());
@@ -92,7 +93,7 @@ namespace FPS.EditorTools
 
         class RangeMats
         {
-            public Material Wall, Floor, Ceiling, Frame, Table, Acoustic, Rubber, Backstop, Red, Yellow, Emissive, SignBack;
+            public Material Wall, Floor, Ceiling, Frame, Table, Acoustic, Rubber, Backstop, Red, Yellow, Emissive, SignBack, SignWhite, Gold;
         }
 
         static RangeMats BuildMaterials()
@@ -111,6 +112,8 @@ namespace FPS.EditorTools
                 Yellow   = EnsureMat("RangeYellow",   new Color(0.91f, 0.73f, 0.24f), 0.30f, 0f),
                 Emissive = EnsureMat("RangeEmissive", Color.white, 0.5f, 0f, emission: Color.white * 2.2f),
                 SignBack = EnsureMat("RangeSignBack", new Color(0.09f, 0.10f, 0.12f), 0.25f, 0.2f),
+                SignWhite = EnsureMat("RangeSignWhite", new Color(0.92f, 0.91f, 0.88f), 0.3f, 0f),
+                Gold     = EnsureMat("RangeGold", new Color(0.85f, 0.68f, 0.25f), 0.55f, 0.8f),
             };
             AssetDatabase.SaveAssets();
             return m;
@@ -386,28 +389,50 @@ namespace FPS.EditorTools
         {
             var sg = Group("Range_Signage");
 
-            // Numéro suspendu au plafond au-dessus de chaque box (lisible côté tireur)
+            // Numéro suspendu au plafond au-dessus de chaque box, plaque cadrée
             for (int i = 0; i < Lanes; i++)
             {
                 float z = LaneZ0 - i * LaneStep;
                 Box("LaneSignRod_" + (i + 1), sg, new Vector3(9.78f, 3.42f, z), new Vector3(0.03f, 1.15f, 0.03f), m.Frame, collider: false);
-                Box("LaneSignBack_" + (i + 1), sg, new Vector3(9.78f, 2.62f, z), new Vector3(0.05f, 0.45f, 0.45f), m.SignBack, collider: false);
-                Sign(sg, (i + 1).ToString(), new Vector3(9.73f, 2.62f, z), new Vector3(0, 90f, 0), 4f, Color.white, 1.2f, 0.5f);
+                Box("LaneSignBack_" + (i + 1), sg, new Vector3(9.78f, 2.62f, z), new Vector3(0.05f, 0.5f, 0.5f), m.SignBack, collider: false);
+                Box("LaneSignTrim_" + (i + 1), sg, new Vector3(9.77f, 2.4f, z), new Vector3(0.05f, 0.035f, 0.5f), m.Gold, collider: false);
+                Sign(sg, (i + 1).ToString(), new Vector3(9.73f, 2.64f, z), new Vector3(0, 90f, 0), 3.6f, Color.white, 1.2f, 0.5f);
             }
 
-            // Enseigne extérieure au-dessus de la porte
-            Box("MainSignBack", sg, new Vector3(XWest - T - 0.06f, 3.3f, DoorZ), new Vector3(0.08f, 0.8f, 5.2f), m.SignBack, collider: false);
-            Sign(sg, "SHOOTING RANGE", new Vector3(XWest - T - 0.12f, 3.3f, DoorZ), new Vector3(0, 90f, 0), 3.5f, new Color(1f, 0.85f, 0.3f), 5f, 0.8f);
+            // Enseigne extérieure : caisson sombre + lisses dorées haut/bas, texte or espacé
+            float sx = XWest - T - 0.06f;
+            Box("MainSignBack", sg, new Vector3(sx, 3.3f, DoorZ), new Vector3(0.08f, 0.85f, 5.4f), m.SignBack, collider: false);
+            Box("MainSignTrim_Top", sg, new Vector3(sx - 0.005f, 3.75f, DoorZ), new Vector3(0.09f, 0.05f, 5.4f), m.Gold, collider: false);
+            Box("MainSignTrim_Bot", sg, new Vector3(sx - 0.005f, 2.85f, DoorZ), new Vector3(0.09f, 0.05f, 5.4f), m.Gold, collider: false);
+            Sign(sg, "S H O O T I N G   R A N G E", new Vector3(sx - 0.06f, 3.3f, DoorZ), new Vector3(0, 90f, 0), 2.6f,
+                 new Color(0.95f, 0.78f, 0.35f), 5.2f, 0.8f);
 
-            // Consigne de sécurité sur le mur nord, lisible depuis l'intérieur
-            Sign(sg, "DO NOT CROSS THE RED LINE", new Vector3(8.5f, 2.4f, ZNorth - 0.1f), Vector3.zero, 1.5f,
-                 new Color(0.9f, 0.25f, 0.2f), 7f, 0.5f);
+            // Consigne de sécurité : plaque blanche cadrée rouge, mur nord
+            Box("SafetySignBack", sg, new Vector3(8.5f, 2.4f, ZNorth - 0.055f), new Vector3(5.6f, 0.6f, 0.05f), m.SignWhite, collider: false);
+            Box("SafetySignTrim", sg, new Vector3(8.5f, 2.13f, ZNorth - 0.06f), new Vector3(5.6f, 0.05f, 0.05f), m.Red, collider: false);
+            Sign(sg, "DO NOT CROSS THE RED LINE", new Vector3(8.5f, 2.4f, ZNorth - 0.09f), Vector3.zero, 1.3f,
+                 new Color(0.75f, 0.15f, 0.12f), 5.4f, 0.5f);
+
+            // Panneau protection obligatoire : plaque jaune, texte noir, au-dessus de la porte côté intérieur
+            Box("PpeSignBack", sg, new Vector3(XWest + 0.04f, 2.85f, DoorZ), new Vector3(0.05f, 0.55f, 2.6f), m.Yellow, collider: false);
+            Sign(sg, "EYES AND EARS REQUIRED", new Vector3(XWest + 0.08f, 2.85f, DoorZ), new Vector3(0, -90f, 0), 1.05f,
+                 new Color(0.08f, 0.08f, 0.08f), 2.5f, 0.5f);
+
+            // Règles du stand : plaque blanche au mur nord du lobby
+            Box("RulesSignBack", sg, new Vector3(7f, 2.2f, ZNorth - 0.055f), new Vector3(1.7f, 1.15f, 0.05f), m.SignWhite, collider: false);
+            Box("RulesSignTrim", sg, new Vector3(7f, 2.82f, ZNorth - 0.06f), new Vector3(1.7f, 0.08f, 0.05f), m.Red, collider: false);
+            Sign(sg, "RANGE RULES\n\nKEEP MUZZLE DOWNRANGE\nEYES AND EARS ON\nSTAY BEHIND THE RED LINE", new Vector3(7f, 2.18f, ZNorth - 0.09f),
+                 Vector3.zero, 0.62f, new Color(0.12f, 0.12f, 0.14f), 1.6f, 1.05f);
+
+            // Marquages de distance peints au sol downrange
+            Sign(sg, "3 M", new Vector3(13.9f, 0.078f, -8f), new Vector3(90f, 90f, 0), 2.2f, new Color(0.9f, 0.9f, 0.9f, 0.85f), 3f, 0.8f);
+            Sign(sg, "5 M", new Vector3(15.9f, 0.078f, -8f), new Vector3(90f, 90f, 0), 2.2f, new Color(0.9f, 0.9f, 0.9f, 0.85f), 3f, 0.8f);
         }
 
         // NB : si un texte apparaît en miroir, ajouter 180 au Y de sa rotation.
         static void Sign(Transform parent, string text, Vector3 pos, Vector3 euler, float fontSize, Color color, float w, float h)
         {
-            var go = new GameObject("Sign_" + text);
+            var go = new GameObject("Sign_" + text.Split('\n')[0]);
             Undo.RegisterCreatedObjectUndo(go, "Range");
             go.transform.SetParent(parent, false);
             go.transform.localPosition = pos;
@@ -416,6 +441,8 @@ namespace FPS.EditorTools
             tmp.text = text;
             tmp.fontSize = fontSize;
             tmp.color = color;
+            tmp.fontStyle = FontStyles.Bold;
+            tmp.characterSpacing = 4f;
             tmp.alignment = TextAlignmentOptions.Center;
             tmp.textWrappingMode = TextWrappingModes.NoWrap;
             tmp.rectTransform.sizeDelta = new Vector2(w, h);
@@ -473,6 +500,61 @@ namespace FPS.EditorTools
             return targets.OrderByDescending(t => t.position.z).ToList();
         }
 
+        const string MilBase = "Assets/ThirdParty/Military Base Pack/Prefabs/Props/";
+
+        static void BuildDetails(RangeMats m)
+        {
+            var dt = Group("Range_Details");
+            float cz = (ZSouth + ZNorth) / 2f;
+
+            // Séparations de couloir peintes au sol downrange
+            for (int i = 0; i <= Lanes; i++)
+            {
+                float z = LaneZ0 + LaneStep / 2f - i * LaneStep;
+                Box("LaneLine_" + i, dt, new Vector3(14.2f, 0.07f, z), new Vector3(5.4f, 0.008f, 0.06f), m.Frame, collider: false, shadows: false);
+            }
+
+            // Bandes de danger au pied du pare-balles
+            Box("BackstopHazard_Y", dt, new Vector3(19.5f, 0.072f, cz), new Vector3(0.35f, 0.01f, ZNorth - ZSouth - 0.2f), m.Yellow, collider: false, shadows: false);
+            Box("BackstopHazard_K", dt, new Vector3(19.85f, 0.072f, cz), new Vector3(0.35f, 0.01f, ZNorth - ZSouth - 0.2f), m.Frame, collider: false, shadows: false);
+
+            // Pilastres entre les panneaux acoustiques (casse la monotonie des grands murs)
+            float[] pilX = { 13.35f, 15.05f, 16.75f, 18.45f };
+            for (int i = 0; i < pilX.Length; i++)
+            {
+                Box("Pilaster_N_" + i, dt, new Vector3(pilX[i], (H - 0.1f) / 2f, ZNorth - 0.07f), new Vector3(0.25f, H - 0.1f, 0.1f), m.Frame);
+                Box("Pilaster_S_" + i, dt, new Vector3(pilX[i], (H - 0.1f) / 2f, ZSouth + 0.07f), new Vector3(0.25f, H - 0.1f, 0.1f), m.Frame);
+            }
+
+            // Appliques émissives au-dessus des panneaux acoustiques
+            for (int i = 0; i < 5; i++)
+            {
+                float px = 12.5f + i * 1.7f;
+                Box("WallLight_N_" + i, dt, new Vector3(px, 3.45f, ZNorth - 0.08f), new Vector3(0.5f, 0.06f, 0.07f), m.Emissive, collider: false, shadows: false);
+                Box("WallLight_S_" + i, dt, new Vector3(px, 3.45f, ZSouth + 0.08f), new Vector3(0.5f, 0.06f, 0.07f), m.Emissive, collider: false, shadows: false);
+            }
+
+            // Extincteur (capsule rouge + support) au sud de la porte, côté intérieur
+            var ext = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            Undo.RegisterCreatedObjectUndo(ext, "Range");
+            ext.name = "FireExtinguisher";
+            ext.transform.SetParent(dt, false);
+            ext.transform.localPosition = new Vector3(5.3f, 1.05f, DoorZ - 1.6f);
+            ext.transform.localScale = new Vector3(0.16f, 0.24f, 0.16f);
+            ext.GetComponent<MeshRenderer>().sharedMaterial = m.Red;
+            ext.tag = "Wall";
+            Box("ExtinguisherMount", dt, new Vector3(5.22f, 1.05f, DoorZ - 1.6f), new Vector3(0.06f, 0.3f, 0.3f), m.Frame, collider: false);
+
+            // Comptoir d'accueil contre le mur nord du lobby
+            Box("CounterTop", dt, new Vector3(7f, 1.06f, -0.1f), new Vector3(2.2f, 0.07f, 0.75f), m.Table);
+            Box("CounterFront", dt, new Vector3(7f, 0.53f, 0.15f), new Vector3(2.2f, 1.06f, 0.06f), m.Table);
+
+            // Barils décoratifs au coin sud-ouest du lobby
+            PlacePrefab(dt, MilBase + "Barrel1.prefab", "Barrel_A", new Vector3(6.1f, 0.06f, -15.3f), new Vector3(0, 15f, 0));
+            PlacePrefab(dt, MilBase + "Barrel2.prefab", "Barrel_B", new Vector3(7f, 0.06f, -15.5f), new Vector3(0, 140f, 0));
+            PlacePrefab(dt, MilBase + "Barrel3.prefab", "Barrel_C", new Vector3(6.5f, 0.06f, -14.6f), new Vector3(0, 70f, 0));
+        }
+
         static void PlaceTargets()
         {
             var targets = SortedTargets();
@@ -482,6 +564,74 @@ namespace FPS.EditorTools
                 float z = LaneZ0 - i * LaneStep;
                 targets[i].position = new Vector3(TargetX, 1.5f, z);
             }
+        }
+
+        [MenuItem("Tools/Shooting Range/Validate")]
+        public static void Validate()
+        {
+            var rootGo = GameObject.Find("ShootingRange");
+            if (rootGo == null) { Debug.LogError("Validate : ShootingRange introuvable."); return; }
+            root = rootGo.transform;
+            int issues = 0;
+
+            // 1. Aucun renderer du stand sous le sol
+            foreach (Transform c in root)
+            {
+                if (!c.name.StartsWith("Range_")) continue;
+                foreach (var r in c.GetComponentsInChildren<Renderer>())
+                    if (r.bounds.min.y < -0.02f)
+                    {
+                        Debug.LogWarning($"[Validate] {r.transform.name} passe sous le sol (min.y={r.bounds.min.y:F3})", r.gameObject);
+                        issues++;
+                    }
+            }
+
+            // 2. Chaque cible posée sur son poteau (bas cible ~ haut poteau)
+            var targets = SortedTargets();
+            for (int i = 0; i < targets.Count && i < Lanes; i++)
+            {
+                float targetBottom = targets[i].position.y - targets[i].localScale.y * 0.5f;
+                var stand = root.Find("Range_Downrange/TargetStand_" + (i + 1));
+                if (stand == null) { Debug.LogWarning("[Validate] TargetStand_" + (i + 1) + " manquant"); issues++; continue; }
+                float standTop = stand.position.y + stand.localScale.y * 0.5f;
+                if (Mathf.Abs(targetBottom - standTop) > 0.06f)
+                {
+                    Debug.LogWarning($"[Validate] {targets[i].name} flotte : bas cible {targetBottom:F2} vs haut poteau {standTop:F2}", targets[i].gameObject);
+                    issues++;
+                }
+            }
+
+            // 3. Porte franchissable : raycast horizontal à hauteur de poitrine à travers l'ouverture
+            if (Physics.Raycast(new Vector3(3.5f, 1.2f, DoorZ), Vector3.right, out var hit, 3f) && hit.point.x < 5.1f)
+            {
+                Debug.LogWarning($"[Validate] Porte obstruée par {hit.collider.name} à x={hit.point.x:F2}", hit.collider.gameObject);
+                issues++;
+            }
+
+            // 4. Vitrines posées au niveau du sol
+            var props = root.Find("Range_Props");
+            if (props != null)
+                foreach (Transform p in props)
+                {
+                    var rends = p.GetComponentsInChildren<Renderer>();
+                    if (rends.Length == 0) continue;
+                    var b = rends[0].bounds;
+                    foreach (var r in rends) b.Encapsulate(r.bounds);
+                    if (b.min.y < 0.0f || b.min.y > 0.15f)
+                    {
+                        Debug.LogWarning($"[Validate] {p.name} mal posé (bas à y={b.min.y:F3}, attendu ~0.06)", p.gameObject);
+                        issues++;
+                    }
+                }
+
+            // 5. Textures branchées ?
+            var wallMat = AssetDatabase.LoadAssetAtPath<Material>(MatFolder + "/RangeWall.mat");
+            if (wallMat != null && wallMat.GetTexture("_BaseMap") == null)
+                Debug.Log("[Validate] Info : RangeWall sans texture (dossier Textures absent ?) — couleurs unies utilisées.");
+
+            Debug.Log(issues == 0
+                ? "[Validate] OK — aucun problème détecté."
+                : $"[Validate] {issues} problème(s) détecté(s), voir warnings ci-dessus.");
         }
 
         static void WarnIfBlocked()
