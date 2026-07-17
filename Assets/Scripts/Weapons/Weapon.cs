@@ -4,12 +4,10 @@ using UnityEngine;
 
 public class Weapon : MonoBehaviour
 {
-    public Camera playerCamera;
-
     // Tir
     public bool isShooting, readyToShoot;
     bool allowReset = true;
-    public float shootingDelay = 2f;
+    public float shootingDelay = 0.2f;
 
     // Rafale (mode Burst)
     public int bulletsPerBurst = 3;
@@ -24,6 +22,13 @@ public class Weapon : MonoBehaviour
     public float bulletVelocity = 30f;
     public float bulletPrefabLifeTime = 3f;
 
+    public GameObject muzzleEffect;
+
+    public Animator weaponAnimator;
+
+    // Nom exact du clip d'animation de recul (doit correspondre au nom dans l'Animator)
+    public string recoilClipName = "Recoil_M1911";
+
     public enum ShootingMode
     {
         Single,
@@ -33,62 +38,153 @@ public class Weapon : MonoBehaviour
 
     public ShootingMode currentShootingMode;
 
+    [Header("Ammo Settings")]
+    public int magazineSize = 8;
+    public int totalAmmo = 32;
+    public float reloadTime = 1.5f;
+
+    private int bulletsLeft;
+    private bool isReloading = false;
+
     private void Awake()
     {
         readyToShoot = true;
         burstBulletLeft = bulletsPerBurst;
     }
 
+    private void Start()
+    {
+        if (magazineSize <= 0) magazineSize = 8;
+        if (totalAmmo <= 0) totalAmmo = 32;
+        bulletsLeft = magazineSize;
+        UpdateHUD();
+    }
+
+    private void UpdateHUD()
+    {
+        if (AmmoManager.Instance != null && AmmoManager.Instance.ammoDisplay != null)
+        {
+            AmmoManager.Instance.ammoDisplay.text = bulletsLeft + "/" + totalAmmo;
+        }
+    }
+
+    private IEnumerator Reload()
+    {
+        isReloading = true;
+        yield return new WaitForSeconds(reloadTime);
+
+        int bulletsToLoad = magazineSize - bulletsLeft;
+        int bulletsToTake = Mathf.Min(bulletsToLoad, totalAmmo);
+
+        bulletsLeft += bulletsToTake;
+        totalAmmo -= bulletsToTake;
+
+        isReloading = false;
+        UpdateHUD();
+    }
+
     void Update()
     {
-        // Détecte l'input selon le mode de tir choisi
+        if (isReloading) return;
+
+        if (Input.GetKeyDown(KeyCode.R) && bulletsLeft < magazineSize && totalAmmo > 0)
+        {
+            StartCoroutine(Reload());
+            return;
+        }
+
         if (currentShootingMode == ShootingMode.Auto)
         {
-            isShooting = Input.GetKey(KeyCode.Mouse0); // maintenu = tir continu
+            isShooting = Input.GetKey(KeyCode.Mouse0);
         }
         else if (currentShootingMode == ShootingMode.Single ||
             currentShootingMode == ShootingMode.Burst)
         {
-            isShooting = Input.GetKeyDown(KeyCode.Mouse0); // un seul clic = un seul tir
+            isShooting = Input.GetKeyDown(KeyCode.Mouse0);
         }
 
         if (readyToShoot && isShooting)
         {
-            burstBulletLeft = bulletsPerBurst;
-            FireWeapon();
+            if (bulletsLeft > 0)
+            {
+                burstBulletLeft = bulletsPerBurst;
+                FireWeapon();
+            }
+            else if (totalAmmo > 0)
+            {
+                StartCoroutine(Reload());
+            }
         }
     }
 
     private void FireWeapon()
     {
+        if (bulletsLeft <= 0) return;
+
+        bulletsLeft--;
+        UpdateHUD();
+
+        muzzleEffect.GetComponent<ParticleSystem>().Play();
+
+        // Son de tir (corrigé : l'appel manquait, le son n'était jamais joué)
+        if (SoundManager.Instance != null)
+        {
+            SoundManager.Instance.shootingSound1911.PlayOneShot(SoundManager.Instance.shootingSound1911.clip);
+        }
+
         readyToShoot = false;
 
-        // Calcule où vise le joueur (avec dispersion aléatoire)
+        // Calcule la durée réelle du délai avant le prochain tir :
+        // soit shootingDelay (config manuelle), soit la durée de l'anim de recul si elle est plus longue
+        float actualDelay = shootingDelay;
+
+        if (weaponAnimator != null)
+        {
+            weaponAnimator.SetTrigger("RECOIL");
+
+            float recoilClipLength = GetClipLength(recoilClipName);
+            if (recoilClipLength > 0f)
+            {
+                actualDelay = Mathf.Max(shootingDelay, recoilClipLength);
+            }
+        }
+
         Vector3 shootingDirection = CalculateDirectionAndSpread().normalized;
 
-        // Crée la balle au point de tir
         GameObject bullet = Instantiate(bulletPrefab, bulletSpawn.position, Quaternion.identity);
         bullet.transform.forward = shootingDirection;
 
-        // Propulse la balle (bulletPrefab doit avoir un Rigidbody)
         bullet.GetComponent<Rigidbody>().AddForce(shootingDirection * bulletVelocity, ForceMode.Impulse);
 
-        // Détruit la balle après un délai pour éviter d'accumuler des objets en mémoire
         StartCoroutine(DestroyBulletAfterTime(bullet, bulletPrefabLifeTime));
 
-        // Gère le délai entre chaque tir
         if (allowReset)
         {
-            Invoke("ResetShot", shootingDelay);
+            Invoke("ResetShot", actualDelay);
             allowReset = false;
         }
 
-        // Gère la rafale (plusieurs balles à la suite)
         if (currentShootingMode == ShootingMode.Burst && burstBulletLeft > 1)
         {
             burstBulletLeft--;
-            Invoke("FireWeapon", shootingDelay);
+            Invoke("FireWeapon", actualDelay);
         }
+    }
+
+    // Cherche la durée du clip d'animation par son nom dans l'Animator Controller
+    private float GetClipLength(string clipName)
+    {
+        if (weaponAnimator == null || weaponAnimator.runtimeAnimatorController == null) return 0f;
+
+        foreach (AnimationClip clip in weaponAnimator.runtimeAnimatorController.animationClips)
+        {
+            if (clip.name == clipName)
+            {
+                return clip.length;
+            }
+        }
+
+        return 0f;
     }
 
     private void ResetShot()
@@ -99,23 +195,21 @@ public class Weapon : MonoBehaviour
 
     public Vector3 CalculateDirectionAndSpread()
     {
-        // Envoie un rayon invisible depuis le centre de l'écran pour savoir où on vise
-        Ray ray = playerCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
+        Ray ray = Camera.main.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
         RaycastHit hit;
 
         Vector3 targetPoint;
         if (Physics.Raycast(ray, out hit))
         {
-            targetPoint = hit.point; // touche un objet
+            targetPoint = hit.point;
         }
         else
         {
-            targetPoint = ray.GetPoint(100); // vise dans le vide, à 100m
+            targetPoint = ray.GetPoint(100);
         }
 
         Vector3 direction = targetPoint - bulletSpawn.position;
 
-        // Ajoute une dispersion aléatoire (précision de l'arme)
         float x = UnityEngine.Random.Range(-spreadIntensity, spreadIntensity);
         float y = UnityEngine.Random.Range(-spreadIntensity, spreadIntensity);
 
