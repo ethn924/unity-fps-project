@@ -32,6 +32,8 @@ public class Weapon : MonoBehaviour
     [Header("Munitions")]
     public int magazineSize = 8;
     public int totalAmmo = 32;
+    [Tooltip("Si activé, recharge automatiquement quand le chargeur est vide et qu'on tente de tirer.")]
+    public bool autoReloadOnEmpty = true;
     public float reloadTime = 1.5f;
 
     public bool isShooting, readyToShoot;
@@ -111,9 +113,17 @@ public class Weapon : MonoBehaviour
                 burstBulletLeft = bulletsPerBurst;
                 FireWeapon();
             }
-            else if (totalAmmo > 0)
+            else if (totalAmmo > 0 && autoReloadOnEmpty)
             {
-                StartCoroutine(Reload()); // Auto-reload
+                StartCoroutine(Reload());
+            }
+            else
+            {
+                // Son de chargeur vide
+                if (SoundManager.Instance != null && SoundManager.Instance.emptyMagazineSound1911 != null)
+                {
+                    SoundManager.Instance.emptyMagazineSound1911.Play();
+                }
             }
         }
     }
