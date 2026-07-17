@@ -65,6 +65,12 @@ public class Weapon : MonoBehaviour
     private IEnumerator Reload()
     {
         isReloading = true;
+
+        if (SoundManager.Instance != null && SoundManager.Instance.reloadingSound1911 != null)
+        {
+            SoundManager.Instance.reloadingSound1911.Play();
+        }
+
         yield return new WaitForSeconds(reloadTime);
 
         int bulletsToLoad = magazineSize - bulletsLeft;
@@ -114,6 +120,12 @@ public class Weapon : MonoBehaviour
 
     private void FireWeapon()
     {
+
+        if (bulletsLeft == 0 && isShooting)
+        {
+            SoundManager.Instance.emptyMagazineSound1911.Play();
+        }
+
         if (bulletsLeft <= 0) return;
 
         bulletsLeft--;
