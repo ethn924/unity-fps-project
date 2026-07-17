@@ -22,9 +22,24 @@ public class BeerBottle : MonoBehaviour
 
     public void Explode()
     {
-        // Pas de démolition : la bouteille entière réagit à l'impact
+        Explode(Random.insideUnitSphere, 5f);
+    }
+
+    public void Explode(Vector3 forceDirection, float forceIntensity)
+    {
         rb.isKinematic = false;
-        rb.AddForce(Random.insideUnitSphere * 5f, ForceMode.Impulse);
+        
+        // Applique une force dans la direction de l'impact avec un petit mouvement ascendant
+        Vector3 pushForce = (forceDirection + Vector3.up * 0.2f).normalized * forceIntensity;
+        rb.AddForce(pushForce, ForceMode.Impulse);
+
+        // Ajoute un couple de rotation pour faire tournoyer la bouteille
+        Vector3 randomTorque = new Vector3(
+            Random.Range(-1f, 1f),
+            Random.Range(-1f, 1f),
+            Random.Range(-1f, 1f)
+        ) * (forceIntensity * 0.5f);
+        rb.AddTorque(randomTorque, ForceMode.Impulse);
 
         PlayImpactSound();
     }

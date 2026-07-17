@@ -36,8 +36,11 @@ public class Bullet : MonoBehaviour
             BeerBottle beerBottle = objectWeHit.gameObject.GetComponent<BeerBottle>();
             if (beerBottle != null)
             {
-                beerBottle.Explode();
+                // Calcule la direction de la force en fonction de la trajectoire de la balle
+                beerBottle.Explode(transform.forward, 12f);
             }
+            CreateBulletImpactEffect(objectWeHit);
+            Destroy(gameObject);
         }
     }
 
