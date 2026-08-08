@@ -8,6 +8,11 @@ public class Bullet : MonoBehaviour
         // Impact sur une cible
         if (objectWeHit.gameObject.CompareTag("Target"))
         {
+            // Cible qui tombe : bascule dans la direction de la balle
+            FallingTarget fallingTarget = objectWeHit.gameObject.GetComponent<FallingTarget>();
+            if (fallingTarget != null)
+                fallingTarget.Fall(transform.forward, objectWeHit.contacts[0].point);
+
             CreateBulletImpactEffect(objectWeHit);
             Destroy(gameObject);
         }

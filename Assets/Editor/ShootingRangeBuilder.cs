@@ -55,6 +55,7 @@ namespace FPS.EditorTools
             BuildBooths(m);
             PlaceTargets();          // avant BuildDownrange : les supports s'adaptent à la taille de chaque cible
             BuildDownrange(m);
+            BuildFallingTargets(m);
             BuildLighting(m);
             BuildSignage(m);
             BuildProps(m);
@@ -98,9 +99,11 @@ namespace FPS.EditorTools
 
         static RangeMats BuildMaterials()
         {
+            TiledCache.Clear(); // les matériaux de base viennent d'être resynchronisés
             var m = new RangeMats
             {
-                Wall     = EnsureMat("RangeWall",     new Color(0.84f, 0.83f, 0.80f), 0.15f, 0f,   texKeyword: "concrete", tiling: 2f),
+                // Relief adouci (0.6) : garde le grain du béton sans creuser d'ombres en lumière rasante
+                Wall     = EnsureMat("RangeWall",     new Color(0.84f, 0.83f, 0.80f), 0.15f, 0f,   texKeyword: "concrete", tiling: 2f, normalStrength: 0.6f),
                 Floor    = EnsureMat("RangeFloor",    new Color(0.56f, 0.56f, 0.54f), 0.45f, 0f,   texKeyword: "floor",    tiling: 3f),
                 Ceiling  = EnsureMat("RangeCeiling",  new Color(0.17f, 0.18f, 0.20f), 0.10f, 0f),
                 Frame    = EnsureMat("RangeFrame",    new Color(0.13f, 0.14f, 0.16f), 0.50f, 0.7f),
@@ -120,7 +123,8 @@ namespace FPS.EditorTools
         }
 
         static Material EnsureMat(string name, Color color, float smooth, float metal,
-                                  Color? emission = null, string texKeyword = null, float tiling = 1f)
+                                  Color? emission = null, string texKeyword = null, float tiling = 1f,
+                                  float normalStrength = 1f)
         {
             if (!AssetDatabase.IsValidFolder("Assets/Materials"))
                 AssetDatabase.CreateFolder("Assets", "Materials");
@@ -150,6 +154,15 @@ namespace FPS.EditorTools
                 mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
             }
 
+            // Pas de mot-clé : matériau uni — on retire toute texture branchée précédemment
+            if (string.IsNullOrEmpty(texKeyword))
+            {
+                mat.SetTexture("_BaseMap", null);
+                if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", null);
+                mat.SetTexture("_BumpMap", null);
+                mat.DisableKeyword("_NORMALMAP");
+            }
+
             // Upgrade optionnel : textures sous Assets/ThirdParty/Textures branchées par mot-clé.
             if (!string.IsNullOrEmpty(texKeyword))
             {
@@ -166,10 +179,44 @@ namespace FPS.EditorTools
                 {
                     mat.EnableKeyword("_NORMALMAP");
                     mat.SetTexture("_BumpMap", nrm);
+                    // Relief atténué : à pleine force, la lumière rasante des spots
+                    // creuse des ombres marbrées sur les grandes surfaces
+                    mat.SetFloat("_BumpScale", normalStrength);
                 }
             }
 
             EditorUtility.SetDirty(mat);
+            return mat;
+        }
+
+        // Variante d'un matériau texturé avec tiling adapté aux dimensions de la face :
+        // densité constante (~1 répétition / metersPerTile) => plus aucune texture étirée,
+        // quelle que soit la taille du mur. Les cubes Unity mappent l'UV 0..1 par face,
+        // donc un tiling fixe s'étire proportionnellement à la surface — d'où ce helper.
+        static readonly Dictionary<string, Material> TiledCache = new Dictionary<string, Material>();
+        static Material Tiled(Material src, float faceW, float faceH, float metersPerTile = 1.5f)
+        {
+            if (src == null || src.GetTexture("_BaseMap") == null) return src;
+            float sx = Mathf.Max(1f, Mathf.Round(faceW / metersPerTile));
+            float sy = Mathf.Max(1f, Mathf.Round(faceH / metersPerTile));
+            string path = $"{MatFolder}/{src.name}_{sx}x{sy}.mat";
+
+            if (TiledCache.TryGetValue(path, out var cached) && cached != null) return cached;
+
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (mat == null)
+            {
+                mat = new Material(src);
+                AssetDatabase.CreateAsset(mat, path);
+            }
+            else
+            {
+                mat.CopyPropertiesFromMaterial(src); // resynchronise avec le matériau de base à chaque build
+            }
+            // URP/Lit : toutes les maps partagent le tiling de _BaseMap
+            mat.SetTextureScale("_BaseMap", new Vector2(sx, sy));
+            EditorUtility.SetDirty(mat);
+            TiledCache[path] = mat;
             return mat;
         }
 
@@ -181,6 +228,7 @@ namespace FPS.EditorTools
             {
                 string path = AssetDatabase.GUIDToAssetPath(g);
                 string lower = path.ToLowerInvariant();
+                if (lower.Contains("_unused")) continue; // textures mises au placard
                 if (!lower.Contains(keyword)) continue;
                 // Le sol vit dans un dossier "floor" : exclu des autres recherches
                 // pour éviter que les murs récupèrent la texture du sol.
@@ -245,22 +293,25 @@ namespace FPS.EditorTools
             float lenZ = ZNorth - ZSouth + 2 * T;
 
             // Sol : dalle fine (0.06) — même layer que Ground pour le groundCheck du joueur
-            var floor = Box("Floor", s, new Vector3(cx, 0.03f, cz), new Vector3(lenX, 0.06f, lenZ), m.Floor);
+            // Tiled(...) : tiling proportionnel à la surface, sinon la texture s'étire.
+            // Dalle en retrait de 1 cm : son chant exactement coplanaire avec les faces
+            // extérieures des murs scintillait (z-fighting) vu de dehors.
+            var floor = Box("Floor", s, new Vector3(cx, 0.03f, cz), new Vector3(lenX - 0.02f, 0.06f, lenZ - 0.02f), Tiled(m.Floor, lenX, lenZ));
             floor.layer = groundLayer;
 
             Box("Ceiling", s, new Vector3(cx, H + 0.075f, cz), new Vector3(lenX, 0.15f, lenZ), m.Ceiling);
 
-            Box("Wall_North", s, new Vector3(cx, H / 2f, ZNorth + T / 2f), new Vector3(lenX, H, T), m.Wall);
-            Box("Wall_South", s, new Vector3(cx, H / 2f, ZSouth - T / 2f), new Vector3(lenX, H, T), m.Wall);
-            Box("Wall_East",  s, new Vector3(XEast + T / 2f, H / 2f, cz),  new Vector3(T, H, lenZ), m.Wall);
+            Box("Wall_North", s, new Vector3(cx, H / 2f, ZNorth + T / 2f), new Vector3(lenX, H, T), Tiled(m.Wall, lenX, H));
+            Box("Wall_South", s, new Vector3(cx, H / 2f, ZSouth - T / 2f), new Vector3(lenX, H, T), Tiled(m.Wall, lenX, H));
+            Box("Wall_East",  s, new Vector3(XEast + T / 2f, H / 2f, cz),  new Vector3(T, H, lenZ), Tiled(m.Wall, lenZ, H));
 
             // Mur ouest avec porte (entrée derrière la ligne de tir)
             float wx = XWest - T / 2f;
             float nLen = (ZNorth + T) - (DoorZ + DoorW / 2f);
             float sLen = (DoorZ - DoorW / 2f) - (ZSouth - T);
-            Box("Wall_West_N", s, new Vector3(wx, H / 2f, DoorZ + DoorW / 2f + nLen / 2f), new Vector3(T, H, nLen), m.Wall);
-            Box("Wall_West_S", s, new Vector3(wx, H / 2f, DoorZ - DoorW / 2f - sLen / 2f), new Vector3(T, H, sLen), m.Wall);
-            Box("Wall_West_Header", s, new Vector3(wx, DoorH + (H - DoorH) / 2f, DoorZ), new Vector3(T, H - DoorH, DoorW), m.Wall);
+            Box("Wall_West_N", s, new Vector3(wx, H / 2f, DoorZ + DoorW / 2f + nLen / 2f), new Vector3(T, H, nLen), Tiled(m.Wall, nLen, H));
+            Box("Wall_West_S", s, new Vector3(wx, H / 2f, DoorZ - DoorW / 2f - sLen / 2f), new Vector3(T, H, sLen), Tiled(m.Wall, sLen, H));
+            Box("Wall_West_Header", s, new Vector3(wx, DoorH + (H - DoorH) / 2f, DoorZ), new Vector3(T, H - DoorH, DoorW), Tiled(m.Wall, DoorW, H - DoorH));
 
             // Encadrement de porte EN RETRAIT dans l'ouverture : aucun chevauchement
             // avec le mur (cause du z-fighting précédent), débord libre des deux côtés.
@@ -271,8 +322,8 @@ namespace FPS.EditorTools
             Box("DoorLintel", s, new Vector3(wx, DoorH - 0.05f, DoorZ), new Vector3(T + 0.16f, 0.08f, DoorW - 0.3f), m.Frame);
 
             // Bande sombre derrière la zone tireurs — décollée du mur (anti z-fighting)
-            Box("Wainscot_N", s, new Vector3(8.2f, 0.5f, ZNorth - 0.03f - Standoff), new Vector3(5.9f, 1f, 0.06f), m.Acoustic);
-            Box("Wainscot_S", s, new Vector3(8.2f, 0.5f, ZSouth + 0.03f + Standoff), new Vector3(5.9f, 1f, 0.06f), m.Acoustic);
+            Box("Wainscot_N", s, new Vector3(8.2f, 0.5f, ZNorth - 0.03f - Standoff), new Vector3(5.9f, 1f, 0.06f), Tiled(m.Acoustic, 5.9f, 1f, 1f));
+            Box("Wainscot_S", s, new Vector3(8.2f, 0.5f, ZSouth + 0.03f + Standoff), new Vector3(5.9f, 1f, 0.06f), Tiled(m.Acoustic, 5.9f, 1f, 1f));
 
             // Panneaux acoustiques côté cibles — décollés du mur
             for (int i = 0; i < 5; i++)
@@ -303,8 +354,9 @@ namespace FPS.EditorTools
             }
 
             float cz = (ZSouth + ZNorth) / 2f;
-            Box("FiringLine", b, new Vector3(10.9f, 0.065f, cz), new Vector3(0.12f, 0.012f, ZNorth - ZSouth - 0.2f), m.Red, shadows: false);
-            Box("HazardStrip", b, new Vector3(11.25f, 0.065f, cz), new Vector3(0.3f, 0.012f, ZNorth - ZSouth - 0.2f), m.Yellow, shadows: false);
+            // Marquages décollés du sol de 2 mm : coplanaire = scintillement (z-fighting)
+            Box("FiringLine", b, new Vector3(10.9f, 0.068f, cz), new Vector3(0.12f, 0.012f, ZNorth - ZSouth - 0.2f), m.Red, shadows: false);
+            Box("HazardStrip", b, new Vector3(11.25f, 0.068f, cz), new Vector3(0.3f, 0.012f, ZNorth - ZSouth - 0.2f), m.Yellow, shadows: false);
         }
 
         static void BuildDownrange(RangeMats m)
@@ -313,7 +365,8 @@ namespace FPS.EditorTools
             float cz = (ZSouth + ZNorth) / 2f;
 
             // Tapis caoutchouc au sol côté cibles
-            Box("RubberFloor", d, new Vector3(16.95f, 0.066f, cz), new Vector3(7.9f, 0.012f, ZNorth - ZSouth - 0.1f), m.Rubber, shadows: false);
+            Box("RubberFloor", d, new Vector3(16.95f, 0.066f, cz), new Vector3(7.9f, 0.012f, ZNorth - ZSouth - 0.1f),
+                Tiled(m.Rubber, 7.9f, ZNorth - ZSouth - 0.1f, 1f), shadows: false);
 
             // Pare-balles incliné (le haut penche vers l'arrière)
             Box("Backstop", d, new Vector3(20.3f, 2f, cz), new Vector3(0.14f, 3.9f, ZNorth - ZSouth - 0.15f), m.Backstop,
@@ -330,6 +383,50 @@ namespace FPS.EditorTools
                 float standH = standTop - 0.06f;
                 Box("TargetStand_" + (i + 1), d, new Vector3(TargetX, 0.06f + standH / 2f, z), new Vector3(0.12f, standH, 0.12f), m.Frame);
                 Box("TargetBase_" + (i + 1), d, new Vector3(TargetX, 0.09f, z), new Vector3(0.5f, 0.06f, 0.5f), m.Frame);
+            }
+        }
+
+        // Plaques métalliques sur un rail derrière les cibles : elles basculent
+        // et tombent quand une balle les touche (composant FallingTarget).
+        static void BuildFallingTargets(RangeMats m)
+        {
+            var ft = Group("Range_FallingTargets");
+
+            const float RailX = 19f;    // entre les cibles (17.5) et le pare-balles (20.3)
+            const float RailY = 0.85f;  // hauteur du dessus du rail
+
+            // Plaques placées ENTRE les couloirs : visibles entre les cibles existantes
+            int plates = Lanes - 1;
+            float zFirst = LaneZ0 - LaneStep / 2f;
+            float zLast = zFirst - (plates - 1) * LaneStep;
+            float railCz = (zFirst + zLast) / 2f;
+            float railLen = (plates - 1) * LaneStep + 1.2f;
+
+            Box("PlateRail", ft, new Vector3(RailX, RailY - 0.04f, railCz), new Vector3(0.18f, 0.08f, railLen), m.Frame);
+            Box("PlateRailLeg_N", ft, new Vector3(RailX, 0.44f, zFirst + 0.45f), new Vector3(0.1f, 0.76f, 0.1f), m.Frame);
+            Box("PlateRailLeg_S", ft, new Vector3(RailX, 0.44f, zLast - 0.45f), new Vector3(0.1f, 0.76f, 0.1f), m.Frame);
+
+            var clink = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/Bottle/bottle_clink.wav");
+
+            for (int i = 0; i < plates; i++)
+            {
+                float z = zFirst - i * LaneStep;
+
+                // Plaques blanches et rouges en alternance, posées debout sur le rail
+                var plate = Box("FallingPlate_" + (i + 1), ft,
+                    new Vector3(RailX, RailY + 0.21f, z),
+                    new Vector3(0.05f, 0.42f, 0.34f),
+                    i % 2 == 0 ? m.SignWhite : m.Red, tag: "Target");
+
+                // Objet dynamique : on retire le flag de batching statique posé par Box
+                GameObjectUtility.SetStaticEditorFlags(plate, 0);
+
+                var rb = plate.AddComponent<Rigidbody>();
+                rb.isKinematic = true; // Figée tant qu'aucune balle ne la touche
+                rb.mass = 2f;
+
+                var falling = plate.AddComponent<FallingTarget>();
+                falling.fallSound = clink;
             }
         }
 
@@ -367,6 +464,19 @@ namespace FPS.EditorTools
 
             // Spot extérieur au-dessus de l'entrée
             Spot(l, new Vector3(XWest - T - 0.4f, 3.4f, DoorZ), 2f, 5f);
+
+            // Sonde de réflexion : les surfaces lisses reflètent l'intérieur du stand
+            // au lieu du ciel — rendu métal/sol nettement plus crédible, zéro artefact écran
+            var probeGo = new GameObject("ReflectionProbe");
+            Undo.RegisterCreatedObjectUndo(probeGo, "Range");
+            probeGo.transform.SetParent(l, false);
+            probeGo.transform.localPosition = new Vector3((XWest + XEast) / 2f, H / 2f, (ZSouth + ZNorth) / 2f);
+            var probe = probeGo.AddComponent<ReflectionProbe>();
+            probe.mode = UnityEngine.Rendering.ReflectionProbeMode.Realtime;
+            probe.refreshMode = UnityEngine.Rendering.ReflectionProbeRefreshMode.OnAwake;
+            probe.boxProjection = true;
+            probe.size = new Vector3(XEast - XWest + 0.5f, H + 0.5f, ZNorth - ZSouth + 0.5f);
+            probe.resolution = 128;
         }
 
         static void Spot(Transform parent, Vector3 pos, float intensity, float range,
@@ -431,8 +541,8 @@ namespace FPS.EditorTools
 
             // Marquages de distance peints au sol downrange (au centre d'un couloir,
             // pas sur une ligne de séparation)
-            Sign(sg, "3 M", new Vector3(13.9f, 0.082f, -9f), new Vector3(90f, 90f, 0), 2.2f, new Color(0.9f, 0.9f, 0.9f, 0.85f), 3f, 0.8f);
-            Sign(sg, "5 M", new Vector3(15.9f, 0.082f, -9f), new Vector3(90f, 90f, 0), 2.2f, new Color(0.9f, 0.9f, 0.9f, 0.85f), 3f, 0.8f);
+            Sign(sg, "3 M", new Vector3(13.9f, 0.092f, -9f), new Vector3(90f, 90f, 0), 2.2f, new Color(0.9f, 0.9f, 0.9f, 0.85f), 3f, 0.8f);
+            Sign(sg, "5 M", new Vector3(15.9f, 0.092f, -9f), new Vector3(90f, 90f, 0), 2.2f, new Color(0.9f, 0.9f, 0.9f, 0.85f), 3f, 0.8f);
         }
 
         // NB : si un texte apparaît en miroir, ajouter 180 au Y de sa rotation.
@@ -491,7 +601,8 @@ namespace FPS.EditorTools
             {
                 var b = rends[0].bounds;
                 foreach (var r in rends) b.Encapsulate(r.bounds);
-                go.transform.position += new Vector3(0, pos.y - b.min.y, 0);
+                // +4 mm : un socle exactement coplanaire avec le sol scintille (z-fighting)
+                go.transform.position += new Vector3(0, pos.y - b.min.y + 0.004f, 0);
             }
             return true;
         }
@@ -517,12 +628,12 @@ namespace FPS.EditorTools
             for (int i = 0; i <= Lanes; i++)
             {
                 float z = LaneZ0 + LaneStep / 2f - i * LaneStep;
-                Box("LaneLine_" + i, dt, new Vector3(14.2f, 0.07f, z), new Vector3(5.4f, 0.008f, 0.06f), m.Frame, collider: false, shadows: false);
+                Box("LaneLine_" + i, dt, new Vector3(14.2f, 0.078f, z), new Vector3(5.4f, 0.008f, 0.06f), m.Frame, collider: false, shadows: false);
             }
 
             // Bandes de danger au pied du pare-balles
-            Box("BackstopHazard_Y", dt, new Vector3(19.5f, 0.072f, cz), new Vector3(0.35f, 0.01f, ZNorth - ZSouth - 0.2f), m.Yellow, collider: false, shadows: false);
-            Box("BackstopHazard_K", dt, new Vector3(19.85f, 0.072f, cz), new Vector3(0.35f, 0.01f, ZNorth - ZSouth - 0.2f), m.Frame, collider: false, shadows: false);
+            Box("BackstopHazard_Y", dt, new Vector3(19.5f, 0.08f, cz), new Vector3(0.35f, 0.01f, ZNorth - ZSouth - 0.2f), m.Yellow, collider: false, shadows: false);
+            Box("BackstopHazard_K", dt, new Vector3(19.85f, 0.08f, cz), new Vector3(0.35f, 0.01f, ZNorth - ZSouth - 0.2f), m.Frame, collider: false, shadows: false);
 
             // Pilastres entre les panneaux acoustiques (casse la monotonie des grands murs)
             float[] pilX = { 13.35f, 15.05f, 16.75f, 18.45f };
@@ -568,7 +679,8 @@ namespace FPS.EditorTools
             {
                 Undo.RecordObject(targets[i], "Move target");
                 float z = LaneZ0 - i * LaneStep;
-                targets[i].position = new Vector3(TargetX, 1.5f, z);
+                // Position locale : le stand entier peut être déplacé via le root ShootingRange
+                targets[i].localPosition = new Vector3(TargetX, 1.5f, z);
             }
         }
 
@@ -608,9 +720,12 @@ namespace FPS.EditorTools
             }
 
             // 3. Porte franchissable : raycast horizontal à hauteur de poitrine à travers l'ouverture
-            if (Physics.Raycast(new Vector3(3.5f, 1.2f, DoorZ), Vector3.right, out var hit, 3f) && hit.point.x < 5.1f)
+            // (coordonnées locales converties en monde : le root peut être déplacé)
+            var doorStart = root.TransformPoint(new Vector3(3.5f, 1.2f, DoorZ));
+            if (Physics.Raycast(doorStart, root.TransformDirection(Vector3.right), out var hit, 3f)
+                && root.InverseTransformPoint(hit.point).x < 5.1f)
             {
-                Debug.LogWarning($"[Validate] Porte obstruée par {hit.collider.name} à x={hit.point.x:F2}", hit.collider.gameObject);
+                Debug.LogWarning($"[Validate] Porte obstruée par {hit.collider.name}", hit.collider.gameObject);
                 issues++;
             }
 

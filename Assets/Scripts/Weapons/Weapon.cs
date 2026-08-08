@@ -11,8 +11,8 @@ public class Weapon : MonoBehaviour
     public ShootingMode currentShootingMode;
 
     [Header("Paramètres de Tir")]
-    public float shootingDelay = 0.2f;
-    public float spreadIntensity;
+    public float shootingDelay = 0.12f;
+    public float spreadIntensity = 0.025f;
 
     [Header("Mode Rafale")]
     public int bulletsPerBurst = 3;
@@ -21,23 +21,25 @@ public class Weapon : MonoBehaviour
     [Header("Projectile")]
     public GameObject bulletPrefab;
     public Transform bulletSpawn;
-    public float bulletVelocity = 30f;
-    public float bulletPrefabLifeTime = 3f;
+    public float bulletVelocity = 500f;
+    public float bulletPrefabLifeTime = 2f;
 
     [Header("Visuels & Anim")]
     public GameObject muzzleEffect;
     public Animator weaponAnimator;
     public string recoilClipName = "Recoil_M1911";
+    public string reloadClipName = "Reload_M1911";
+    public string idleStateName = "Idle_M1911";
 
     [Header("Munitions")]
     public int magazineSize = 8;
-    public int totalAmmo = 32;
+    public int totalAmmo = 48;
     [Tooltip("Si activé, recharge automatiquement quand le chargeur est vide et qu'on tente de tirer.")]
     public bool autoReloadOnEmpty = true;
     public float reloadTime = 1.5f;
 
     public bool isShooting, readyToShoot;
-    private bool allowReset = true;
+    private Coroutine recoveryCoroutine;
     private int bulletsLeft;
     private bool isReloading = false;
 
@@ -60,20 +62,35 @@ public class Weapon : MonoBehaviour
     {
         if (AmmoManager.Instance != null && AmmoManager.Instance.ammoDisplay != null)
         {
-            AmmoManager.Instance.ammoDisplay.text = bulletsLeft + "/" + totalAmmo;
+            // Chargeur en gros, réserve en plus petit et gris — chargeur en rouge quand presque vide
+            string magColor = bulletsLeft <= magazineSize / 4 ? "#E5484D" : "#FFFFFF";
+            AmmoManager.Instance.ammoDisplay.text =
+                "<color=" + magColor + ">" + bulletsLeft + "</color>" +
+                "<size=55%><color=#9A9A9A> / " + totalAmmo + "</color></size>";
         }
     }
 
     private IEnumerator Reload()
     {
         isReloading = true;
+        readyToShoot = false;
+        StopRecovery();
+        CancelInvoke(nameof(FireWeapon));
 
         if (SoundManager.Instance != null && SoundManager.Instance.reloadingSound1911 != null)
         {
             SoundManager.Instance.reloadingSound1911.Play();
         }
 
-        yield return new WaitForSeconds(reloadTime);
+        if (weaponAnimator != null)
+            weaponAnimator.SetTrigger("RELOAD");
+
+        float reloadDuration = GetClipLength(reloadClipName);
+        if (reloadDuration <= 0f)
+            reloadDuration = reloadTime;
+
+        yield return new WaitForSeconds(reloadDuration);
+        yield return WaitUntilWeaponIdle();
 
         int bulletsToLoad = magazineSize - bulletsLeft;
         int bulletsToTake = Mathf.Min(bulletsToLoad, totalAmmo);
@@ -82,6 +99,7 @@ public class Weapon : MonoBehaviour
         totalAmmo -= bulletsToTake;
 
         isReloading = false;
+        readyToShoot = true;
         UpdateHUD();
     }
 
@@ -96,8 +114,8 @@ public class Weapon : MonoBehaviour
             return;
         }
 
-        // Détection du clic de tir selon le mode
-        if (currentShootingMode == ShootingMode.Auto)
+        // Single : maintien du clic = tir semi-auto au max de la cadence
+        if (currentShootingMode == ShootingMode.Auto || currentShootingMode == ShootingMode.Single)
         {
             isShooting = Input.GetKey(KeyCode.Mouse0);
         }
@@ -154,6 +172,7 @@ public class Weapon : MonoBehaviour
         // Déclenche l'animation de recul et ajuste le délai
         if (weaponAnimator != null)
         {
+            weaponAnimator.ResetTrigger("RECOIL");
             weaponAnimator.SetTrigger("RECOIL");
             float recoilClipLength = GetClipLength(recoilClipName);
             if (recoilClipLength > 0f)
@@ -170,17 +189,28 @@ public class Weapon : MonoBehaviour
 
         StartCoroutine(DestroyBulletAfterTime(bullet, bulletPrefabLifeTime));
 
-        if (allowReset)
-        {
-            Invoke("ResetShot", actualDelay);
-            allowReset = false;
-        }
+        StartRecovery(actualDelay);
 
         // Gère la rafale
         if (currentShootingMode == ShootingMode.Burst && burstBulletLeft > 1)
         {
             burstBulletLeft--;
-            Invoke("FireWeapon", actualDelay);
+            Invoke(nameof(FireWeapon), actualDelay);
+        }
+    }
+
+    private void StartRecovery(float delay)
+    {
+        StopRecovery();
+        recoveryCoroutine = StartCoroutine(RecoverAfterShot(delay));
+    }
+
+    private void StopRecovery()
+    {
+        if (recoveryCoroutine != null)
+        {
+            StopCoroutine(recoveryCoroutine);
+            recoveryCoroutine = null;
         }
     }
 
@@ -194,10 +224,31 @@ public class Weapon : MonoBehaviour
         return 0f;
     }
 
+    private IEnumerator RecoverAfterShot(float minDelay)
+    {
+        yield return new WaitForSeconds(minDelay);
+        yield return WaitUntilWeaponIdle();
+        ResetShot();
+    }
+
+    private IEnumerator WaitUntilWeaponIdle()
+    {
+        if (weaponAnimator == null) yield break;
+
+        const int layer = 0;
+        yield return null;
+
+        while (weaponAnimator.IsInTransition(layer) ||
+               !weaponAnimator.GetCurrentAnimatorStateInfo(layer).IsName(idleStateName))
+        {
+            yield return null;
+        }
+    }
+
     private void ResetShot()
     {
         readyToShoot = true;
-        allowReset = true;
+        recoveryCoroutine = null;
     }
 
     // Calcule la trajectoire de tir depuis le centre de la caméra avec dispersion
