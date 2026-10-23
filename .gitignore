@@ -42,3 +42,6 @@ sysinfo.txt
 *.aab
 *.unitypackage
 *.app
+
+# config locale d'outils
+.claude/
